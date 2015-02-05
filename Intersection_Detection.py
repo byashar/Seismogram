@@ -20,7 +20,9 @@ def find_intersections_from_file_path(input_path, output_path,
                                       figure=True, labels=False):
     image = imread(input_path)
     image = color.rgb2gray(image)
-    imsave(output_path, find_intersections(image, figure, labels))
+    image_ints = find_intersections(image, figure, labels)
+    image_ints = image_ints.astype(float)
+    imsave(output_path, image_ints)
 
 def find_intersections(image_bin, figure=True, labels=False):
     '''    
