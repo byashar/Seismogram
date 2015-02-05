@@ -6,15 +6,20 @@ Created on Thu Jan 29 14:38:19 2015
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
+from matplotlib.pyplot import imread
 import csv
 from scipy.signal import convolve2d
 from scipy.ndimage import label
 
 from skimage.morphology import medial_axis
 from skimage import color
-from skimage import io
+from skimage.io import imsave
 from skimage.draw import circle
+
+def find_intersections_from_file_path(input_path, output_path, 
+                                      figure=True, labels=False):
+    image = imread(input_path)
+    imsave(output_path, find_intersections(image, figure, labels))
 
 def find_intersections(image_bin, figure=True, labels=False):
     '''    
