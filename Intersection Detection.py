@@ -9,13 +9,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import csv
 from scipy.signal import convolve2d
+from scipy.ndimage import label
 
 from skimage.morphology import medial_axis
 from skimage import color
 from skimage import io
 from skimage.draw import circle
 
-def find_intersections(image_bin, figure=True):
+def find_intersections(image_bin, figure=True, labels=False):
     '''    
     Finds the intersections of traces by skeletonizing the image.
     
@@ -28,27 +29,55 @@ def find_intersections(image_bin, figure=True):
         pixels in intersection regions set to True. If set to False,
         function outputs a list of circular regions making up the 
         intersections.
+    labels : bool
+        If False (default), output is a binary image. If True, the 
+        output of the function is an array with each intersection
+        region given a unique ID.
     
     Returns
     ----------
-    
+    image_intersections : numpy array
+        An image with the same shape as image_bin. If labels is False
+        (default), the ouptut is a binary image with pixels that are
+        part of intersection regions are marked as True. If labels is
+        set to True, the output is an array of integers, where each
+        intersection region has a unique ID and every pixel in the region
+        has that unique ID.
     '''
     image_skel,dist = medial_axis(image_bin, return_distance = True)
     image_dead_ends = find_dead_ends(image_skel)
-    dentrites = get_all_pixel_paths(image_skel,image_dead_ends, 
+    dendrites = get_all_pixel_paths(image_skel,image_dead_ends, 
                                     max_path_length = 50)
-    for d in dentrites:
+
+    # To differentiate between "dendrites" and traces that happen to
+    # reach a dead end, d_threshold is the minimum ratio of the displacement
+    # of the pixel path and the width of the trace where the pixel
+    # path connects with other paths for the path to be considered
+    # a trace. If the ratio falls below this threshold, the path is 
+    # considered a "dendrite" and removed.
+    d_threshold = 2.5
+    for d in dendrites:
         pix_i = d[0]    
         pix_f = d[-1]
-        dentrite_displacement = np.sqrt( (pix_i[0] - pix_f[0]) ** 2 + 
+        dendrite_displacement = np.sqrt( (pix_i[0] - pix_f[0]) ** 2 + 
                                      (pix_i[1] - pix_f[1]) ** 2)
-        if dentrite_displacement < 2.5 * dist[pix_f[0], pix_f[1]]:
+        if dendrite_displacement < d_threshold * dist[pix_f[0], pix_f[1]]:
             remove_pixels(image_skel,d)
     
     intersections, degrees = find_junctions(image_skel)
     radii = get_intersection_sizes(intersections,dist)
     image_intersections = mark_coords(image_skel.shape, intersections)
     expand_junctions(image_intersections, intersections,radii)    
+    
+    # The CSV output option will not work properly at the moment.
+    figure = True
+    if figure:    
+        if labels:
+            image_intersections, _ = label(image_intersections)
+        return image_intersections
+    else:
+        output_intersections(['Row', 'Column', 'Degree', 'Radius'], \
+        intersections[:,0], intersections[:,1], degrees, radii)
 
 def find_dead_ends(skeleton):
     '''
@@ -131,7 +160,14 @@ def get_pixel_path(pixel_array, curr_pixel, prev_pixel=np.array([-1,-1]), \
         
     Returns 
     ---------
-    connectivity : 
+    connectivity : int
+        The number of pixels in the skeleton that are adjacent to 
+        curr_pixel (not counting prev_pixel). If curr_pixel is the final
+        pixel in the pixel path, connectivity is the number of other paths
+        that are connected to the pixel path. 
+    pixel_path : list of coordinate pairs (1x2 numpy arrays)
+        A list containing coordinates for all the pixels in the 1-pixel-wide
+        connected path of pixels.
     '''    
     pixel_path = []
     connectivity = 0
@@ -140,9 +176,9 @@ def get_pixel_path(pixel_array, curr_pixel, prev_pixel=np.array([-1,-1]), \
     image_shape = np.shape(pixel_array)        
     
     # Check the surrounding 8 pixels 
-    pixels_to_explore = np.array([[-1,-1], [-1,0], [-1,1],
-                                  [0,-1],          [0,1],
-                                  [1,-1],  [1,0],  [1,1]]) \
+    pixels_to_explore = np.array([[-1,-1], [-1, 0], [-1, 1],
+                                  [ 0,-1],          [ 0, 1],
+                                  [ 1,-1], [ 1, 0], [ 1, 1]]) \
                         + curr_pixel    
     for x in pixels_to_explore:
         # If the indices correspond to a pixel in the image that's
@@ -167,7 +203,24 @@ def get_pixel_path(pixel_array, curr_pixel, prev_pixel=np.array([-1,-1]), \
 
 def get_all_pixel_paths(pixel_array, dead_ends, max_path_length=-1):
     '''
+    Makes calls to get_pixel_path for all the dead ends passed to it.
+    Only returns paths of pixels that are connected to other pixel paths. 
+    
+    Parameters
+    -------------
+    pixel_array : 2-D Boolean array
+        The skeletonized image.
+    dead_ends : list of coordinate pairs (as 1x2 numpy arrays)
         
+    max_path_length : int
+        The maximum length of a pixel path. Function returns the pixel
+        path if this limit has been reached. 
+        
+    Returns 
+    ---------
+    paths : list of lists of coordinate pairs (as 1x2 numpy arrays)
+        A list that contains the pixel_path outputs from calls to the
+        get_pixel_path function. 
     '''
     paths = []    
     for d_e in dead_ends:
@@ -177,11 +230,39 @@ def get_all_pixel_paths(pixel_array, dead_ends, max_path_length=-1):
     return paths
 
 def remove_pixels(pixel_array, pixels_to_remove):
+    '''
+    Given an array of Booleans and a list of coordinates, this function
+    sets the value of the array to False at each location specified.
+    
+    Parameters
+    ------------
+    pixel_array : numpy array
+        A Boolean array.
+    pixels_to_remove : list of numpy arrays or tuples
+        A list of coordinates corresponding to locations in pixel_array.
+    '''    
     for p in pixels_to_remove:
         pixel_array[p[0],p[1]] = False
         
         
 def mark_coords(shape, coords):
+    '''
+    Given dimensions and a list of coordinates, this function
+    creates a Boolean array that is True at all the locations specified 
+    and False everywhere else.
+    
+    Parameters
+    ------------
+    shape : tuple or 1-D numpy array
+        The dimensions of the array to be created
+    pixels_to_remove : list of numpy arrays or tuples
+        A list of coordinates corresponding to locations in pixel_array.
+    
+    Returns
+    ---------
+    markers : Boolean numpy array
+        Values are True in the locations specified in coords.
+    '''    
     markers = np.zeros(shape, dtype=bool)    
     for x in coords:
         markers[x[0],x[1]] = True
@@ -198,14 +279,57 @@ def color_markers(marker_image, background, marker_color=[1,0,0]):
     return overlay
     
 def draw_circle(image,coords,radius):
+    '''    
+    Sets all values of an array in a circular region to True.
+    
+    Parameters
+    -----------
+    image : Boolean numpy array
+        A binary image.
+    coords : A tuple or 1-D numpy array
+        The coordinates of the center of the circle.
+    radius : double
+        Radius of circle.
+    '''
     rr, cc = circle(coords[0], coords[1], radius)
     image[rr, cc] = True
 
 def expand_junctions(image, junctions, radii):
+    '''    
+    Expands the 1-pixel junctions into circular regions.
+    
+    Parameters
+    -----------
+    image : Boolean numpy array
+        A binary image, either entirely False or with only pixels inside the
+        intersection regions marked as True.
+    junctions : list of coordinate pairs
+        Coordinates where pixel paths meet.
+    radii : list of doubles
+        The radii of circles to draw around the junctions to create the
+        intersection regions.
+    '''
     for center,radius in zip(junctions,radii):
         draw_circle(image,center,radius)
 
 def get_intersection_sizes(intersections,distance_transform):
+    '''
+    Finds the distances of the shortest paths from each junction
+    to the edges of the trace. 
+    
+    Parameters
+    ------------
+    intersections : list of coordinate pairs
+        The coordinates of junctions.
+    distance_transform : numpy array
+        An array containing the distance transform of a binary image.
+    
+    Returns
+    --------
+    sizes : list of doubles
+        The radii of the largest circles that can be drawn around pixels
+        listed in intersections that do not include background pixels.
+    '''
     sizes = []
     for i in intersections:
         sizes.append(distance_transform[i[0],i[1]])
@@ -218,15 +342,3 @@ def output_intersections(header, *args):
         writer = csv.writer(f)
         writer.writerow(header)
         writer.writerows(intersection_data)
-
-intersections, degrees = find_junctions(image_skel)
-radii = get_intersection_sizes(intersections,dist)
-image_intersections = mark_coords(image_skel.shape, intersections)
-expand_junctions(image_intersections, intersections,radii)
-image_intersections = color_markers(image_intersections, color.gray2rgb(image_gray))
-
-image_intersections = color_markers(image_skel,image_intersections,marker_color=[0,1,0])
-
-
-output_intersections(['Row', 'Column', 'Degree', 'Radius'], \
-    intersections[:,0], intersections[:,1], degrees, radii)
