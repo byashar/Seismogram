@@ -19,6 +19,7 @@ from skimage.draw import circle
 def find_intersections_from_file_path(input_path, output_path, 
                                       figure=True, labels=False):
     image = imread(input_path)
+    image = color.rgb2gray(image)
     imsave(output_path, find_intersections(image, figure, labels))
 
 def find_intersections(image_bin, figure=True, labels=False):
