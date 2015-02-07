@@ -299,7 +299,7 @@ def draw_circle(image,coords,radius):
     radius : double
         Radius of circle.
     '''
-    rr, cc = circle(coords[0], coords[1], radius)
+    rr, cc = circle(coords[0], coords[1], radius, shape = image.shape)
     image[rr, cc] = True
 
 def expand_junctions(image, junctions, radii):
