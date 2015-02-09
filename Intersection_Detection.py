@@ -73,9 +73,9 @@ def find_intersections(image_bin, figure=True, labels=False):
             remove_pixels(image_skel,d)
     
     intersections, degrees = find_junctions(image_skel)
-    radii = get_intersection_sizes(intersections,dist)
+    radii = get_intersection_sizes(intersections, dist)
     image_intersections = mark_coords(image_skel.shape, intersections)
-    expand_junctions(image_intersections, intersections,radii)    
+    expand_junctions(image_intersections, intersections, radii)    
     
     # The CSV output option will not work properly at the moment.
     figure = True
