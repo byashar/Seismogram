@@ -46,7 +46,7 @@ class IntersectionCollection:
         '''
         circles = []
         for coord, radius in zip(self.intersections, self.radii):
-            newPoint = geojson.Point(tuple(coord))
+            newPoint = geojson.Point((int(coord[1]), int(coord[0])))
             newCircle = geojson.Feature(geometry = newPoint, properties = { "radius": radius })
             circles.append(newCircle)
         out = geojson.FeatureCollection(circles)
